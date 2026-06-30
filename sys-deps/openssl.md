@@ -7,7 +7,10 @@ and [`../results/x86_64-pc-windows-gnu-native-static-libs.txt`](../results/x86_6
 ## Rtools (R's build system)
 
 `pkg-config --libs --static openssl`, OpenSSL 3.6.0, from
-`C:/rtools45/x86_64-w64-mingw32.static.posix`:
+`C:/rtools45/x86_64-w64-mingw32.static.posix`. This matches CRAN's Rtools45
+build 6768 (2026-02-04), which ships OpenSSL 3.6.0
+([news](https://cran.r-project.org/bin/windows/Rtools/rtools45/news.html);
+progression 3.4.0 @6536 → 3.5.0 @6691 → 3.6.0 @6768):
 
 ```
 -lssl -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32

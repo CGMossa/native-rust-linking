@@ -18,6 +18,25 @@ MSVCRT), in where the library comes from, and in build options. They do tend
 to agree on the OS libraries the dependency drags in. This registry tracks
 exactly where, per dependency.
 
+## Rtools45 reference (provenance)
+
+The Rtools side of every entry comes from a specific Rtools build. Current is
+**6768** (`rtools45-6768-6492.exe`, 2026-02-04):
+
+- C runtime **UCRT**; toolchain prefix `x86_64-w64-mingw32.static.posix` (static libs)
+- **GCC 14.3.0**, **MinGW-w64 11.0.1** (12.0.0 deliberately avoided — numerical differences)
+- **OpenSSL 3.6.0** (changelog: 3.4.0 @6536 → 3.5.0 @6691 → 3.6.0 @6768)
+- aarch64 variant: **LLVM 19.1.7**/clang, prefix `aarch64-w64-mingw32.static.posix`, experimental
+- libraries shipped as `rtools45-toolchain-libs-{base,cross,full}-6768.tar.zst`
+
+`pkg-config` is how R resolves these link lines, so the changelog's dependency
+shifts flow straight into the registry (e.g. curl gained `nghttp2` @6536 and
+`secur32` @6691; pkg-config users get them automatically).
+
+Sources:
+[files](https://cran.r-project.org/bin/windows/Rtools/rtools45/files/),
+[news](https://cran.r-project.org/bin/windows/Rtools/rtools45/news.html).
+
 ## Format
 
 `<dep>.md` with: the two flag sets (verbatim from CI), a side-by-side table,
