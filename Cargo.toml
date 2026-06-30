@@ -1,0 +1,10 @@
+[package]
+name = "linking_to_openssl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+openssl-sys = "0.9.117"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
