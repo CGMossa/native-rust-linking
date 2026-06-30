@@ -1,0 +1,24 @@
+# Does Rtools already ship libs that packages currently vendor?
+# PRESENT => a *-sys crate could pkg-config it instead of bundling C.
+# prefix: C:/rtools45/x86_64-w64-mingw32.static.posix
+
+## pkg-config --exists / --modversion
+PRESENT  libzstd          1.5.7
+absent   zstd
+PRESENT  libdeflate       1.25
+PRESENT  libjpeg          9.6.0
+absent   libjpeg-turbo
+PRESENT  zlib             1.3.1
+PRESENT  libbrotlienc     1.2.0
+absent   duckdb
+absent   rocksdb
+
+## static archives in prefix/lib matching vendored libs
+libbrotlicommon.a
+libbrotlidec.a
+libbrotlienc.a
+libdeflate.a
+libjpeg.a
+libjpeg.la
+libz.a
+libzstd.a
