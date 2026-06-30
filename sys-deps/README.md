@@ -20,22 +20,38 @@ exactly where, per dependency.
 
 ## Rtools45 reference (provenance)
 
-The Rtools side of every entry comes from a specific Rtools build. Current is
-**6768** (`rtools45-6768-6492.exe`, 2026-02-04):
+The Rtools side of every entry depends on the Rtools build, which tracks the R
+version. Two facts shape the whole registry:
 
-- C runtime **UCRT**; toolchain prefix `x86_64-w64-mingw32.static.posix` (static libs)
-- **GCC 14.3.0**, **MinGW-w64 11.0.1** (12.0.0 deliberately avoided — numerical differences)
-- **OpenSSL 3.6.0** (changelog: 3.4.0 @6536 → 3.5.0 @6691 → 3.6.0 @6768)
-- aarch64 variant: **LLVM 19.1.7**/clang, prefix `aarch64-w64-mingw32.static.posix`, experimental
-- libraries shipped as `rtools45-toolchain-libs-{base,cross,full}-6768.tar.zst`
+- **UCRT since Rtools42 (R 4.2).** There is no MSVCRT R anymore (that was
+  Rtools40 / R <= 4.1), so the UCRT-vs-MSVCRT mismatch with Rust's
+  `x86_64-pc-windows-gnu` applies to every currently-supported R.
+- **`pkg-config` arrived in Rtools43**, which is why R's modern build system
+  resolves link lines through it — the basis for the "Rtools view" here.
 
-`pkg-config` is how R resolves these link lines, so the changelog's dependency
-shifts flow straight into the registry (e.g. curl gained `nghttp2` @6536 and
-`secur32` @6691; pkg-config users get them automatically).
+| Rtools | R | GCC | MinGW-w64 | OpenSSL (latest) | notes |
+|---|---|---|---|---|---|
+| 42 | 4.2 | 10.4.0 | 9.0.0 | 1.1.1q | first UCRT Rtools; zlib 1.2.12 |
+| 43 | 4.3 | 12.2.0 | 10.0.0 | 3.1.4 | pkg-config wrapper added (@5863); zlib 1.3.1; OpenSSL 1.1.1 -> 3.x |
+| 44 | 4.4 | 13.3.0 | 11.0.1 | 3.4.0 | aarch64 LLVM 17.0.6 |
+| 45 | 4.5 | 14.3.0 | 11.0.1 | 3.6.0 | aarch64 LLVM 19.1.7; build 6768 (2026-02-04) |
 
-Sources:
-[files](https://cran.r-project.org/bin/windows/Rtools/rtools45/files/),
-[news](https://cran.r-project.org/bin/windows/Rtools/rtools45/news.html).
+Current build **6768** (`rtools45-6768-6492.exe`): UCRT, prefix
+`x86_64-w64-mingw32.static.posix` (static libs), GCC 14.3.0, MinGW-w64 11.0.1
+(12.0.0 deliberately avoided — numerical differences), OpenSSL 3.6.0 (within
+rtools45: 3.4.0 @6536 -> 3.5.0 @6691 -> 3.6.0 @6768). Libraries shipped as
+`rtools45-toolchain-libs-{base,cross,full}-6768.tar.zst`.
+
+`pkg-config` resolves these link lines, so changelog dependency shifts flow
+straight into the registry (e.g. curl gained `nghttp2` @6536 and `secur32`
+@6691; pkg-config users get them automatically).
+
+Sources: rtools45
+[files](https://cran.r-project.org/bin/windows/Rtools/rtools45/files/) /
+[news](https://cran.r-project.org/bin/windows/Rtools/rtools45/news.html),
+[rtools44](https://cran.r-project.org/bin/windows/Rtools/rtools44/news.html),
+[rtools43](https://cran.r-project.org/bin/windows/Rtools/rtools43/news.html),
+[rtools42](https://cran.r-project.org/bin/windows/Rtools/rtools42/news.html).
 
 ## Format
 
