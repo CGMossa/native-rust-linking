@@ -123,10 +123,17 @@ pub fn openssl_version() -> std::os::raw::c_ulong {
 |----------|------------------------|
 | macOS arm64 (OpenSSL 3.6.2, brew) | `-lssl -lcrypto -liconv -lSystem -lc -lm` |
 | Ubuntu 24.04 arm64 (OpenSSL 3.0.13) | `-lssl -lcrypto -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc` |
-| `x86_64-pc-windows-gnu` (vendored) | _see `results/` from CI / cross-compile_ |
+| `x86_64-pc-windows-gnu` (vendored) | `-lgdi32 -luser32 -lcrypt32 -lws2_32 -ladvapi32 -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp` |
 
-`-lssl -lcrypto` is constant; the trailing libs are the platform baseline from
-section 3.
+On macOS/Ubuntu (dynamic system OpenSSL) `-lssl -lcrypto` is constant and the
+trailing libs are the platform baseline from section 3.
+
+The Windows row is **vendored** (the local cross-compile and the CI both build
+this target this way). Note there is no `-lssl`/`-lcrypto`: with a static
+(vendored) OpenSSL, rustc bundles `libssl.a`/`libcrypto.a` *into* the output
+`.a`, so the note lists only the Win32 libraries OpenSSL still needs at link
+time (`crypt32`, `ws2_32`, `advapi32`, `user32`, `gdi32`) on top of the
+std baseline. That full set is what goes into `Makevars.win` `PKG_LIBS`.
 
 ### Reproducing on each platform
 
