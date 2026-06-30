@@ -218,14 +218,21 @@ RUSTFLAGS="--print native-static-libs" \
   cargo build --target x86_64-pc-windows-gnu --features openssl-sys/vendored
 ```
 
-**Older toolchains (1.81.0).** This crate is `edition = "2024"`, which needs
-Cargo >= 1.85; Cargo 1.81.0 refuses the manifest. Set `edition = "2021"` to
-test linking on it (linking is edition-independent, output is identical):
+**Older toolchains (1.81.0).** The link output does not depend on the compiler
+version: building on 1.81.0 prints the same `native-static-libs` and the same
+`link-args` as current stable. Linking is decided by the target and the
+dependency build scripts, not by rustc.
+
+The `edition` change below is unrelated to linking. It is only needed because
+`edition = "2024"` requires Cargo >= 1.85, so Cargo 1.81.0 refuses to parse the
+manifest before it ever builds. Flipping to `2021` just lets the old toolchain
+compile the project; the link result is identical either way:
 
 ```sh
 rustup toolchain install 1.81.0 --profile minimal
-sed -i.bak 's/edition = "2024"/edition = "2021"/' Cargo.toml
+sed -i.bak 's/edition = "2024"/edition = "2021"/' Cargo.toml   # manifest only, not linking
 RUSTFLAGS="--print native-static-libs" rustup run 1.81.0 cargo build
+# note: native-static-libs: -lssl -lcrypto -liconv -lSystem -lc -lm   (same as current stable)
 ```
 
 ## 5. Benchmark: system vs vendored
