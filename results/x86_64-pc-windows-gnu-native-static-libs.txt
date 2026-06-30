@@ -1,0 +1,2 @@
+# cargo --print native-static-libs (x86_64-pc-windows-gnu, vendored OpenSSL)
+note: native-static-libs: -lgdi32 -luser32 -lcrypt32 -lws2_32 -ladvapi32 -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp

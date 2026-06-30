@@ -1,0 +1,5 @@
+# Rtools pkg-config (the toolchain R's build system uses)
+modversion:     3.6.0
+cflags:         -IC:/rtools45/x86_64-w64-mingw32.static.posix/include 
+libs:           -LC:/rtools45/x86_64-w64-mingw32.static.posix -lssl -LC:/rtools45/x86_64-w64-mingw32.static.posix -lz -lws2_32 -lgdi32 -lcrypt32 -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32 
+libs --static:  -LC:/rtools45/x86_64-w64-mingw32.static.posix -lssl -LC:/rtools45/x86_64-w64-mingw32.static.posix -lz -lws2_32 -lgdi32 -lcrypt32 -lcrypto -lz -lws2_32 -lgdi32 -lcrypt32 
