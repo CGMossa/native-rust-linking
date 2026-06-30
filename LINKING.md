@@ -22,6 +22,20 @@ Verified across crate types (`rustc --print native-static-libs --crate-type
 crate-type = ["staticlib", "rlib"]
 ```
 
+The probe, and exactly what each crate type prints:
+
+```console
+$ echo 'pub fn f(){}' > probe.rs   # 'fn main(){}' for the bin case
+$ rustc --print native-static-libs --crate-type bin       probe.rs --out-dir .
+$ rustc --print native-static-libs --crate-type rlib      probe.rs --out-dir .
+$ rustc --print native-static-libs --crate-type cdylib    probe.rs --out-dir .
+$ rustc --print native-static-libs --crate-type staticlib probe.rs --out-dir .
+note: native-static-libs: -lSystem -lc -lm
+```
+
+Only the `staticlib` invocation prints a `note:`; the other three print
+nothing.
+
 Commands:
 
 ```sh
@@ -70,9 +84,10 @@ links against, before any dependency. List targets with `rustc --print
 target-list`, then probe each with a trivial `staticlib` (only `rustup target
 add <triple>` is needed, no external SDK):
 
-```sh
-echo 'pub fn f(){}' > probe.rs
-rustc --print native-static-libs --target <triple> --crate-type staticlib probe.rs --out-dir .
+```console
+$ echo 'pub fn f(){}' > probe.rs
+$ rustc --print native-static-libs --target x86_64-pc-windows-gnu --crate-type staticlib probe.rs --out-dir .
+note: native-static-libs: -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp
 ```
 
 Triples relevant to R packages (R on Windows uses the GNU/Rtools toolchain, so
@@ -106,15 +121,37 @@ cargo:rustc-link-lib=dylib=crypto
 
 But if no code references an `openssl-sys` symbol, rustc dead-strips the crate
 and drops its `-l` flags, so `-lssl`/`-lcrypto` never reach the link (the `-L`
-search path leaks through regardless). Verified: a target that ignores
-`openssl-sys` links with `-L .../openssl@3/lib` only; one symbol reference
-brings back `-lssl -lcrypto`. So reference one:
+search path leaks through regardless). The openssl-relevant tokens out of
+`RUSTFLAGS="--print link-args" cargo build` on macOS, both ways:
+
+```console
+$ # main.rs = fn main() {}  -- ignores openssl-sys
+"-L" "/opt/homebrew/opt/openssl@3/lib"
+
+$ # main.rs references openssl_sys::OpenSSL_version_num()
+"-lssl"
+"-lcrypto"
+"-L" "/opt/homebrew/opt/openssl@3/lib"
+```
+
+So reference one symbol:
 
 ```rust
 // src/lib.rs
 pub fn openssl_version() -> std::os::raw::c_ulong {
     unsafe { openssl_sys::OpenSSL_version_num() }
 }
+```
+
+The full final link line then, trimmed (the std rlibs and `.o` inputs elided
+as `<objects>`):
+
+```console
+$ RUSTFLAGS="--print link-args" cargo build
+env ... "cc" <objects> "-lssl" "-lcrypto" "-liconv" "-lSystem" "-lc" "-lm" \
+  "-arch" "arm64" "-mmacosx-version-min=11.0.0" \
+  "-L" "/opt/homebrew/opt/openssl@3/lib" \
+  "-o" "target/debug/deps/linking_to_openssl-<hash>" "-Wl,-dead_strip" "-nodefaultlibs"
 ```
 
 ### Results (`native-static-libs`, system OpenSSL)
@@ -125,8 +162,22 @@ pub fn openssl_version() -> std::os::raw::c_ulong {
 | Ubuntu 24.04 arm64 (OpenSSL 3.0.13) | `-lssl -lcrypto -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc` |
 | `x86_64-pc-windows-gnu` (vendored) | `-lgdi32 -luser32 -lcrypt32 -lws2_32 -ladvapi32 -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp` |
 
+The raw notes, as printed by `RUSTFLAGS="--print native-static-libs" cargo
+build`:
+
+```console
+# macOS arm64 (system OpenSSL)
+note: native-static-libs: -lssl -lcrypto -liconv -lSystem -lc -lm
+# Ubuntu 24.04 arm64 (system OpenSSL)
+note: native-static-libs: -lssl -lcrypto -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+# x86_64-pc-windows-gnu (vendored OpenSSL)
+note: native-static-libs: -lgdi32 -luser32 -lcrypt32 -lws2_32 -ladvapi32 -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp
+```
+
 On macOS/Ubuntu (dynamic system OpenSSL) `-lssl -lcrypto` is constant and the
-trailing libs are the platform baseline from section 3.
+trailing libs are the platform baseline from section 3. The Windows note is
+what the CI writes to `results/` (see below), and the local cross-compile
+prints the same set.
 
 The Windows row is **vendored** (the local cross-compile and the CI both build
 this target this way). Note there is no `-lssl`/`-lcrypto`: with a static
@@ -161,9 +212,9 @@ prints to `results/`. Cross-compile the same target locally (needs
 `mingw-w64`) and the flags agree:
 
 ```sh
-rustup target add x86_64-pc-windows-gnu
+rustup target add x86_64-pc-windows-gnu   # plus mingw-w64 for the linker + vendored build
 RUSTFLAGS="--print native-static-libs" \
-  cargo build --target x86_64-pc-windows-gnu --features vendored
+  cargo build --target x86_64-pc-windows-gnu --features openssl-sys/vendored
 ```
 
 **Older toolchains (1.81.0).** This crate is `edition = "2024"`, which needs
