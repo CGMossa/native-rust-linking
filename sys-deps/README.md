@@ -73,6 +73,9 @@ Indexed two ways:
   - [`corpus.md`](corpus.md) — survey of 64 extendr R packages: how often a Rust
     R package needs a provided system library at all (3 of 64), the CRAN vs
     non-CRAN discipline gradient, and a vendoring audit backed by a CI probe.
+  - [`audit.md`](audit.md) — per-package hygiene audit of the GitHub-only
+    (non-CRAN) packages: undeclared system deps, avoidable C vendoring, and
+    `Makevars.win` lines that drift from the standard baseline.
 
 ## Adding one
 
