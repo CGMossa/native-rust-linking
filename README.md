@@ -11,9 +11,10 @@ build benchmark.
 The [`sys-deps/`](sys-deps/) registry records how Rtools and cargo each link a
 dependency on Windows and where they diverge (CRT, provenance, build options),
 indexed both by dependency ([`openssl.md`](sys-deps/openssl.md)) and by crate
-([`crates.md`](sys-deps/crates.md)). A [corpus survey](sys-deps/corpus.md) of 52
-extendr R packages backs it: only 2 link a real system library at all; the rest
-are pure-Rust or vendor C/C++. Whether the vendored ones could avoid it (Rtools
-shipping or being asked to add the lib) is an open task with its blockers listed.
+([`crates.md`](sys-deps/crates.md)). A [corpus survey](sys-deps/corpus.md) of 64
+extendr R packages backs it: only 3 need a provided system library at all; the
+rest are pure-Rust or vendor C/C++. Whether the vendored ones could avoid it
+(Rtools already ships several, per a CI probe) is an open task with its blockers
+listed.
 
 MIT licensed.

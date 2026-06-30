@@ -53,9 +53,12 @@ progression 3.4.0 @6536 → 3.5.0 @6691 → 3.6.0 @6768):
 
 ## In the wild (extendr corpus)
 
-Of the 52 packages in the [corpus survey](corpus.md), exactly one links real
-OpenSSL: **`arcgisplaces`** (`reqwest` -> `native-tls` -> `openssl-sys`). It
-shows both halves of the divergence above in a shipping package.
+Of the 64 packages in the [corpus survey](corpus.md), two pull `openssl-sys`,
+and they take opposite routes. **`arcgisplaces`** (`reqwest` -> `native-tls` ->
+`openssl-sys`) links the **system** OpenSSL and shows both halves of the
+divergence above in a shipping package. **`masreml`** (not on CRAN) instead
+**vendors** OpenSSL (`openssl-src`), the route this registry advises against; it
+could link the system lib the way arcgisplaces does.
 
 Unix (`src/Makevars.in`), system OpenSSL via the two explicit libs, exactly as
 R's `pkg-config` would supply them:

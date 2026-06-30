@@ -6,32 +6,36 @@ the more useful lookup, you read it off `Cargo.lock`, and it tells you whether
 that crate needs an installed library, vendors its own C, or is pure Rust (and
 so links nothing beyond the OS).
 
-Data from the [corpus survey](corpus.md) (52 extendr packages). "Resolves by"
-is what the crate does when built for an R package; "verdict" judges whether
-that is the right call (see [Vendoring discipline](#vendoring-discipline)).
+Data from the [corpus survey](corpus.md) (64 extendr packages). The last column
+records whether Rtools45 already ships the library, from the CI probe
+([`../results/rtools-available-libs.txt`](../results/rtools-available-libs.txt)):
+if it does, the `-sys` crate could link it instead of bundling C (the
+[avoiding-vendoring](#avoiding-vendoring-open-task) task).
 
 ## Native C / C++ libraries
 
 These compile or link an actual C/C++ library. Only these can need a
 Rtools-supplied lib or duplicate one by vendoring.
 
-"Status today" is current behaviour, not a fixed verdict. Whether each vendored
-case could avoid vendoring is an open question, see
-[Avoiding vendoring](#avoiding-vendoring-open-task).
-
-| crate | system dep | resolves by | pure-Rust alt | packages | status today |
+| crate | system dep | resolves by | pure-Rust alt | packages | Rtools45 ships it? |
 |---|---|---|---|---|---|
-| `openssl-sys` | OpenSSL | system (`-lssl -lcrypto`); Rtools provides it | `rustls`+`ring` | arcgisplaces | system, not vendored |
-| `libduckdb-sys` | DuckDB | vendored (`bundled`) | none | freestiler, ggsql | vendored; no Rtools lib |
-| `oxrocksdb-sys` | RocksDB | vendored | none | roxigraph | vendored; no Rtools lib |
-| `mozjpeg-sys` | mozjpeg | vendored | decode-only (`zune-jpeg`) | tinyimg | vendored; Rtools? (probe) |
-| `libdeflate-sys` | libdeflate | vendored | `miniz_oxide` (slower) | tinyimg | vendored; Rtools? (probe) |
-| `zstd-sys` | zstd (`libzstd`) | vendored | none (no prod encoder) | freestiler, gtfsrealtime, unsum | vendored; Rtools likely has it (probe) |
-| `clang-sys` | libclang | build-time (bindgen) | n/a | roxigraph | build dep, not link dep |
+| `openssl-sys` | OpenSSL | arcgisplaces: system (`-lssl -lcrypto`); masreml: vendored (`openssl-src`) | `rustls`+`ring` | arcgisplaces, masreml | yes (3.6.0) |
+| `openblas-src` | OpenBLAS / LAPACK | linked (`openblas-static`/`-system`) | none | masreml | R itself provides BLAS/LAPACK |
+| `zstd-sys` | zstd | vendored | none (no prod encoder) | freestiler, gtfsrealtime, unsum, zr | **yes (libzstd 1.5.7)** |
+| `libdeflate-sys` | libdeflate | vendored | `miniz_oxide` (slower) | oxbow, tinyimg | **yes (1.25)** |
+| `libz-sys` | zlib | links/builds zlib | `zlib-rs` (pure Rust) | zr | **yes (zlib 1.3.1)** |
+| `bzip2-sys` | bzip2 | vendored | `libbz2-rs-sys` (pure Rust) | oxbow | not probed |
+| `libduckdb-sys` | DuckDB | vendored (`bundled`) | none | freestiler, ggsql | no |
+| `oxrocksdb-sys` | RocksDB | vendored | none | roxigraph | no |
+| `mozjpeg-sys` | mozjpeg | vendored | decode-only (`zune-jpeg`) | tinyimg | no (libjpeg 9.6.0, not mozjpeg) |
+| `clang-sys` | libclang | build-time (bindgen) | n/a | roxigraph, hftokenizers | build dep, not link dep |
 
 The vendored rows are transitive in every case (DuckDB via the `duckdb` crate,
-zstd via `pmtiles2`/`zip`/`parquet`, etc.), so the package author did not pick
-to bundle C. Whether they *could* link a provided lib instead is the open task.
+zstd via `pmtiles2`/`zip`/`parquet`, libdeflate/bzip2 via `oxbow`'s readers), so
+the package author did not pick to bundle C. The probe shows the top four
+(`zstd`, `libdeflate`, `zlib`, plus brotli) are already in Rtools, so on Windows
+those bundled copies duplicate an available library; whether a package *should*
+link them instead is the open task below.
 
 ## Pure-Rust replacements (no system dep, no C)
 
@@ -42,10 +46,10 @@ standard `Makevars.win` line).
 
 | crate | replaces | packages |
 |---|---|---|
-| `rustls` + `ring` | OpenSSL / TLS | arcgisplaces, freestiler, ggsql, gtfsrealtime, pdfsigner |
-| `zlib-rs` / `libz-rs-sys` | zlib (`libz-sys`) | freestiler, ggsql, gtfsrealtime, unsum |
-| `miniz_oxide` | zlib/deflate (`flate2` backend) | freestiler, gtfsrealtime |
-| `libbz2-rs-sys` | bzip2 (`bzip2-sys`) | gtfsrealtime |
+| `rustls` + `ring` | OpenSSL / TLS | arcgisplaces, freestiler, ggsql, gtfsrealtime, oxbow, pdfsigner |
+| `zlib-rs` / `libz-rs-sys` | zlib (`libz-sys`) | freestiler, ggsql, gtfsrealtime, oxbow, tynding, unsum |
+| `miniz_oxide` | zlib/deflate (`flate2` backend) | 13 packages |
+| `libbz2-rs-sys` | bzip2 (`bzip2-sys`) | gtfsrealtime, oxbow |
 
 ## OS-API binding `-sys` crates (nothing to install)
 
@@ -114,17 +118,25 @@ settled call.
 10. **Reproducibility.** Vendored source builds identically everywhere and over
     time; depending on whatever the system ships reintroduces drift.
 
-**Per library:**
+**Per library** (the CI probe settles route 1: Rtools45 ships `libzstd` 1.5.7,
+`libdeflate` 1.25, `zlib` 1.3.1, `libjpeg` 9.6.0, `libbrotlienc` 1.2.0; it does
+not ship `duckdb`, `rocksdb`, or mozjpeg/`libjpeg-turbo`):
 
-- **zstd** (`zstd-sys`): most actionable. Rtools probably ships `libzstd` (probe
-  confirms) and the crate honours `ZSTD_SYS_USE_PKG_CONFIG`. Blockers: it is
-  transitive across three packages with three different parents, the env var has
-  to reach cargo through R's build, and the bundled build is cheap so the payoff
-  is small.
-- **libdeflate, mozjpeg** (`libdeflate-sys`, `mozjpeg-sys`): small, broadly
-  useful C libs, so plausible Rtools-addition requests. Blockers: `.pc` files,
-  crate system-link support, and the version/ABI coupling above.
-- **DuckDB, RocksDB** (`libduckdb-sys`, `oxrocksdb-sys`): large C++ with their
-  own toolchain needs. An Rtools addition is unlikely and vendoring is
-  realistically the only option; the task here is just to confirm no system
-  packaging exists, then accept it.
+- **zstd, libdeflate, zlib** (`zstd-sys`, `libdeflate-sys`, `libz-sys`): Rtools
+  ships all three, so the link route exists on Windows. Most actionable. Blockers:
+  each is transitive (zstd via `pmtiles2`/`zip`/`parquet`; libdeflate/zlib via
+  `oxbow`), the crate's vendoring opt-out (`ZSTD_SYS_USE_PKG_CONFIG`, etc.) has to
+  reach cargo through R's build, and macOS/Linux still need the lib present. The
+  bundled build is cheap, so the payoff is mostly avoiding a duplicate.
+- **OpenBLAS / LAPACK** (`masreml`, via `ndarray-linalg`): the clearest avoidable
+  case. R ships its own BLAS/LAPACK (`Rblas`/`Rlapack`), so a package should link
+  R's rather than `openblas-static`. Blocker: `ndarray-linalg` needs a backend
+  feature wired to R's BLAS, and ABI/threading has to match R's build.
+- **OpenSSL** (`masreml`, vendored via `openssl-src`): Rtools ships OpenSSL 3.6.0,
+  so `masreml` could link the system lib as `arcgisplaces` does, rather than
+  vendoring. Same routes as [`openssl.md`](openssl.md).
+- **mozjpeg** (`mozjpeg-sys`): Rtools ships `libjpeg` but not mozjpeg (a distinct
+  fork), so a link route needs an Rtools-addition request; vendoring stays for now.
+- **DuckDB, RocksDB** (`libduckdb-sys`, `oxrocksdb-sys`): large C++ with their own
+  toolchain needs, absent from Rtools. An addition is unlikely and vendoring is
+  realistically the only option; confirm no system packaging exists, then accept it.

@@ -70,9 +70,9 @@ Indexed two ways:
     mapped to its system dependency, how it resolves it (system, vendored,
     pure-Rust), and whether the vendoring is necessary.
 - **Corpus evidence:**
-  - [`corpus.md`](corpus.md) — survey of 52 extendr R packages: how often a Rust
-    R package needs a Rtools system library at all (2 of 52), what the rest do
-    instead, and a vendoring-discipline audit.
+  - [`corpus.md`](corpus.md) — survey of 64 extendr R packages: how often a Rust
+    R package needs a provided system library at all (3 of 64), the CRAN vs
+    non-CRAN discipline gradient, and a vendoring audit backed by a CI probe.
 
 ## Adding one
 
