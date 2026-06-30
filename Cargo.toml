@@ -2,6 +2,8 @@
 name = "linking_to_openssl"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+authors = ["Mossa Merhi Reimert <mossa@a2-ai.com>"]
 
 [dependencies]
 openssl-sys = "0.9.117"
