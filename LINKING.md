@@ -1,45 +1,20 @@
-# Linking to OpenSSL
+# Native Rust linking
 
-How to inspect what `openssl-sys` pulls into the link, on macOS and Ubuntu (arm64).
+How to extract the native link settings from a Rust crate, and why that
+matters when a foreign build system (such as R's) performs the final link.
 
-## Scaffolding
+## 1. Cargo: a `staticlib` to get the build settings
 
 ```sh
 cargo new --lib linking_to_openssl
 cd linking_to_openssl
-cargo add openssl-sys
 ```
 
-`cargo new --lib` gives a `src/lib.rs`. The library is necessary in order for `cargo` to do the resolution of linker settings.
-
-### Example: using `openssl`
-
-The `openssl-sys` build script always emits its link settings (verify with
-`cat target/debug/build/openssl-sys-*/output`):
-
-```
-cargo:rustc-link-search=native=/opt/homebrew/opt/openssl@3/lib
-cargo:rustc-link-lib=dylib=ssl
-cargo:rustc-link-lib=dylib=crypto
-```
-
-But if no code references an `openssl-sys` symbol, rustc dead-strips the crate
-and drops its `-l` flags, so `-lssl`/`-lcrypto` never reach the link. The
-`-L` search path leaks through regardless. Verified: a bin that ignores
-`openssl-sys` links with `-L .../openssl@3/lib` only; adding one symbol
-reference brings back `-lssl -lcrypto`. Reference one symbol:
-
-```rust
-// src/lib.rs
-pub fn openssl_version() -> std::os::raw::c_ulong {
-    unsafe { openssl_sys::OpenSSL_version_num() }
-}
-```
-
-`--print native-static-libs` emits its note for `staticlib` only. Verified
-across crate types (`rustc --print native-static-libs --crate-type <T>
-probe.rs --out-dir .`): `bin`, `rlib`, `cdylib` produce no note; only
-`staticlib` does. Add the crate type:
+To read the linker settings back out of the build, compile a **`staticlib`**.
+`rustc --print native-static-libs` emits its note for `staticlib` only.
+Verified across crate types (`rustc --print native-static-libs --crate-type
+<T> probe.rs --out-dir .`): `bin`, `rlib`, and `cdylib` produce no note; only
+`staticlib` does. So a plain `--lib` is not enough on its own:
 
 ```toml
 # Cargo.toml
@@ -47,56 +22,53 @@ probe.rs --out-dir .`): `bin`, `rlib`, `cdylib` produce no note; only
 crate-type = ["staticlib", "rlib"]
 ```
 
-## Commands
+Commands:
 
 ```sh
-# Linker invocation (full cc/ld command line)
-RUSTFLAGS="--print link-args" cargo build
-
-# Native libs a consumer must link against the static lib
+# The native libs a consumer must link when linking this static library
 RUSTFLAGS="--print native-static-libs" cargo build
+
+# The full linker invocation (cc/ld command line)
+RUSTFLAGS="--print link-args" cargo build
 ```
 
-`cargo clean` between runs: the prints only appear on the link step, which is
-skipped when the artifact is already up to date.
+These prints only happen on the link step, which cargo skips when the artifact
+is up to date. Run `cargo clean` between runs.
 
-## Passing the output to a file
-
-`rustc --print` takes an optional `=FILE` (`rustc --help`: `--print <INFO>[=<FILE>]`):
+Send the output to a file. `rustc --print` takes an optional `=FILE`
+(`rustc --help`: `--print <INFO>[=<FILE>]`), or just redirect stdout:
 
 ```sh
 RUSTFLAGS="--print native-static-libs=libs.txt" cargo build
-RUSTFLAGS="--print link-args=link.txt" cargo build
+RUSTFLAGS="--print link-args" cargo build > link.txt 2>&1
 ```
 
-## Results
+## 2. Why this matters for native R packages
 
-macOS arm64, OpenSSL 3.6.2 (Homebrew); Ubuntu 24.04 arm64, OpenSSL 3.0.13.
+When you ship a Rust library inside an R package, **R's build system performs
+the final link**, not cargo. The Rust side is compiled to a `staticlib`
+(`libfoo.a`), and `R CMD INSTALL` links it into the package shared object. R
+therefore needs the list of native libraries the static archive depends on.
 
-### `--print link-args` (OpenSSL-relevant flags)
+You pass that list to R through `src/Makevars` (and `Makevars.win` on
+Windows) via `PKG_LIBS`. The list is exactly what `--print
+native-static-libs` reports:
 
-| Platform | Flags |
-|----------|-------|
-| macOS    | `-lssl -lcrypto` + `-L /opt/homebrew/opt/openssl@3/lib` |
-| Ubuntu   | `-lssl -lcrypto` (no `-L`: OpenSSL is on the default search path `/usr/lib/aarch64-linux-gnu`) |
+```make
+# src/Makevars
+PKG_LIBS = -L$(CARGO_TARGET)/release -lfoo -lssl -lcrypto <platform libs...>
+```
 
-### `--print native-static-libs`
+If those libraries are missing from `PKG_LIBS`, the package fails to link.
+This is why getting the `native-static-libs` list right is the whole game for
+a native R package.
 
-| Platform | `native-static-libs:` |
-|----------|------------------------|
-| macOS    | `-lssl -lcrypto -liconv -lSystem -lc -lm` |
-| Ubuntu   | `-lssl -lcrypto -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc` |
+## 3. What Rust links to
 
-`-lssl -lcrypto` is identical on both. The trailing system libs differ by
-platform: macOS pulls `-liconv -lSystem`, Linux pulls
-`-lgcc_s -lutil -lrt -lpthread -ldl`.
-
-## What each platform links to directly
-
-The trailing libs above are the platform's own baseline, independent of
-OpenSSL: they are what the Rust `std` links against on that target. Get the
-target triples from `rustc --print target-list`, then probe each with a
-trivial `staticlib` (no target build needed beyond `rustup target add <t>`):
+The baseline `native-static-libs` for a target is what the Rust `std` itself
+links against, before any dependency. List targets with `rustc --print
+target-list`, then probe each with a trivial `staticlib` (only `rustup target
+add <triple>` is needed, no external SDK):
 
 ```sh
 echo 'pub fn f(){}' > probe.rs
@@ -106,57 +78,61 @@ rustc --print native-static-libs --target <triple> --crate-type staticlib probe.
 Triples relevant to R packages (R on Windows uses the GNU/Rtools toolchain, so
 `-pc-windows-gnu`, never `-msvc`):
 
-| Target triple | Default `native-static-libs:` |
-|---------------|-------------------------------|
+| Target triple | Baseline `native-static-libs:` |
+|---------------|--------------------------------|
 | `aarch64-apple-darwin`      | `-lSystem -lc -lm` |
 | `x86_64-apple-darwin`       | `-lSystem -lc -lm` |
 | `x86_64-unknown-linux-gnu`  | `-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc` |
 | `aarch64-unknown-linux-gnu` | `-lgcc_s -lutil -lrt -lpthread -lm -ldl -lc` |
 | `x86_64-pc-windows-gnu`     | `-lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp` |
 
-Add `-lssl -lcrypto` on top of these once OpenSSL is referenced. The two
-Apple targets are identical; the two Linux targets are identical.
+The two Apple targets are identical; the two Linux targets are identical.
+Anything a dependency needs is added on top of these.
 
-## Older toolchains (testing with 1.81.0)
-
-This crate is `edition = "2024"`, which needs Cargo >= 1.85. Cargo 1.81.0
-refuses to parse the manifest (`feature edition2024 is required`). To test the
-linking behavior on 1.81.0, set `edition = "2021"` first:
+## 4. Adding the OpenSSL dependency
 
 ```sh
-rustup toolchain install 1.81.0 --profile minimal
-sed -i.bak 's/edition = "2024"/edition = "2021"/' Cargo.toml
-RUSTFLAGS="--print native-static-libs" rustup run 1.81.0 cargo build
+cargo add openssl-sys
 ```
 
-The linking output is identical to current stable: edition affects the
-language frontend, not linking. (Revert with `mv Cargo.toml.bak Cargo.toml`.)
+The `openssl-sys` build script always emits its link settings (see
+`target/debug/build/openssl-sys-*/output`):
 
-## Build time: vendored vs system
-
-`openssl-sys` defaults to linking the system OpenSSL (dynamic). The `vendored`
-feature instead pulls `openssl-src` and compiles OpenSSL from C source, then
-links it statically (needs `perl` + a C compiler):
-
-```sh
-cargo add openssl-sys --features vendored
+```
+cargo:rustc-link-search=native=/opt/homebrew/opt/openssl@3/lib
+cargo:rustc-link-lib=dylib=ssl
+cargo:rustc-link-lib=dylib=crypto
 ```
 
-Clean-build wall time (macOS arm64, 14 cores, registry warm, `cargo clean`
-between runs):
+But if no code references an `openssl-sys` symbol, rustc dead-strips the crate
+and drops its `-l` flags, so `-lssl`/`-lcrypto` never reach the link (the `-L`
+search path leaks through regardless). Verified: a target that ignores
+`openssl-sys` links with `-L .../openssl@3/lib` only; one symbol reference
+brings back `-lssl -lcrypto`. So reference one:
 
-| Build | `cargo build` (clean) |
-|-------|-----------------------|
-| system (dynamic)   | ~1.2 s |
-| vendored (static)  | ~15 s  |
+```rust
+// src/lib.rs
+pub fn openssl_version() -> std::os::raw::c_ulong {
+    unsafe { openssl_sys::OpenSSL_version_num() }
+}
+```
 
-Vendored is ~11x slower to build because it compiles all of OpenSSL. Use it
-for portable static binaries; skip it when the system OpenSSL is fine.
+### Results (`native-static-libs`, system OpenSSL)
 
-## Building on Ubuntu arm64 (Docker)
+| Platform | `native-static-libs:` |
+|----------|------------------------|
+| macOS arm64 (OpenSSL 3.6.2, brew) | `-lssl -lcrypto -liconv -lSystem -lc -lm` |
+| Ubuntu 24.04 arm64 (OpenSSL 3.0.13) | `-lssl -lcrypto -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc` |
+| `x86_64-pc-windows-gnu` (vendored) | _see `results/` from CI / cross-compile_ |
 
-Ubuntu's apt `rustc` is too old for edition 2024, so install current stable
-via rustup. Build into a separate target dir to keep the host `target/` clean.
+`-lssl -lcrypto` is constant; the trailing libs are the platform baseline from
+section 3.
+
+### Reproducing on each platform
+
+**Ubuntu arm64 (Docker).** Ubuntu's apt `rustc` is too old for edition 2024,
+so install current stable via rustup; build into a separate target dir to keep
+the host `target/` clean:
 
 ```sh
 docker run --rm --platform linux/arm64 \
@@ -171,3 +147,48 @@ docker run --rm --platform linux/arm64 \
     RUSTFLAGS="--print native-static-libs" cargo build 2>&1 | grep native-static-libs:
   '
 ```
+
+**Windows.** See `.github/workflows/windows-linking.yml`. It builds the
+`x86_64-pc-windows-gnu` target with the `vendored` feature and commits the
+prints to `results/`. Cross-compile the same target locally (needs
+`mingw-w64`) and the flags agree:
+
+```sh
+rustup target add x86_64-pc-windows-gnu
+RUSTFLAGS="--print native-static-libs" \
+  cargo build --target x86_64-pc-windows-gnu --features vendored
+```
+
+**Older toolchains (1.81.0).** This crate is `edition = "2024"`, which needs
+Cargo >= 1.85; Cargo 1.81.0 refuses the manifest. Set `edition = "2021"` to
+test linking on it (linking is edition-independent, output is identical):
+
+```sh
+rustup toolchain install 1.81.0 --profile minimal
+sed -i.bak 's/edition = "2024"/edition = "2021"/' Cargo.toml
+RUSTFLAGS="--print native-static-libs" rustup run 1.81.0 cargo build
+```
+
+## 5. Benchmark: system vs vendored
+
+`openssl-sys` links the **system** OpenSSL by default (dynamic, fast). The
+`vendored` feature instead pulls `openssl-src` and compiles all of OpenSSL
+from C source, then links it statically:
+
+```sh
+cargo add openssl-sys --features vendored
+```
+
+Clean-build wall time (macOS arm64, 14 cores, registry warm, `cargo clean`
+between runs):
+
+| Build | `cargo build` (14 cores) | `cargo build -j1` |
+|-------|--------------------------|-------------------|
+| system (dynamic) | ~1.2 s | ~3.2 s |
+| vendored (static) | ~15 s | ~42 s |
+
+Vendoring is ~11x slower multi-core and ~13x single-core, because it rebuilds
+all of OpenSSL. The lesson: presenting the **system dependency** at build time
+(and passing its link settings on, e.g. to R via `Makevars`) keeps compilation
+cheap. Vendoring is a convenience for portability, not a substitute for having
+the system library available.
