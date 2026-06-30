@@ -86,7 +86,21 @@ is self-contained. `roxigraph` additionally needs `libclang` at build time
 `windows-sys`, `core-foundation-sys`, `security-framework-sys`,
 `system-configuration-sys` (OS API bindings, link always-present system libs),
 `js-sys`, `web-sys` (wasm), `linux-raw-sys` (syscall constants). They need
-nothing installed.
+nothing installed. The full crate-by-crate breakdown is in [`crates.md`](crates.md).
+
+## Vendoring discipline
+
+Checked every native dependency for whether it vendors C source it did not need
+to (full table in [`crates.md`](crates.md)). The result: no avoidable case.
+
+- Vendored because CRAN's build farm has no alternative: DuckDB, RocksDB,
+  mozjpeg, libdeflate. Bundling is the only option.
+- Not vendored because a Rust-native version exists and is used: zlib
+  (`flate2`/`zlib-rs`), bzip2 (`libbz2-rs-sys`), TLS (`rustls`+`ring`). No
+  `libz-sys`, `bzip2-sys`, or `openssl-src` anywhere; the one OpenSSL user links
+  the system lib.
+- Vendored despite the platform usually having it: only `zstd-sys`, and only
+  transitively (`pmtiles2`/`zip`/`parquet`), with no practical pure-Rust escape.
 
 ## The CRT fault line, in the wild
 

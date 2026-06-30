@@ -8,10 +8,11 @@ settings out of a `staticlib`, passing them to R via `Makevars`, the
 per-platform link results (macOS / Ubuntu / Windows), and a system-vs-vendored
 build benchmark.
 
-The [`sys-deps/`](sys-deps/) registry records, per system dependency, how
-Rtools and cargo each link it on Windows and where they diverge (CRT,
-provenance, build options): [`sys-deps/openssl.md`](sys-deps/openssl.md). A
-[corpus survey](sys-deps/corpus.md) of 52 extendr R packages backs it: only 2
-link a real system library at all; the rest are pure-Rust or vendor C/C++.
+The [`sys-deps/`](sys-deps/) registry records how Rtools and cargo each link a
+dependency on Windows and where they diverge (CRT, provenance, build options),
+indexed both by dependency ([`openssl.md`](sys-deps/openssl.md)) and by crate
+([`crates.md`](sys-deps/crates.md)). A [corpus survey](sys-deps/corpus.md) of 52
+extendr R packages backs it: only 2 link a real system library at all; the rest
+are pure-Rust or vendor C/C++, and none vendors avoidably.
 
 MIT licensed.
