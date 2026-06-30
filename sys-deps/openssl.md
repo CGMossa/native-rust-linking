@@ -51,6 +51,36 @@ progression 3.4.0 @6536 → 3.5.0 @6691 → 3.6.0 @6768):
     ABI fault line for mixing a Rust `-gnu` staticlib into an R/Rtools package.
   - **version** — 3.6.0 vs 3.6.3.
 
+## In the wild (extendr corpus)
+
+Of the 52 packages in the [corpus survey](corpus.md), exactly one links real
+OpenSSL: **`arcgisplaces`** (`reqwest` -> `native-tls` -> `openssl-sys`). It
+shows both halves of the divergence above in a shipping package.
+
+Unix (`src/Makevars.in`), system OpenSSL via the two explicit libs, exactly as
+R's `pkg-config` would supply them:
+
+```make
+PKG_LIBS = -L$(LIBDIR) -larcgisplaces -lcrypto -lssl
+```
+
+Windows (`src/Makevars.win.in`), the full line hand-written because R does the
+link: `-lcrypto` from Rtools' static OpenSSL, schannel (`secur32`) for native-tls
+on Windows, plus the Win32 deps cargo's note lists:
+
+```make
+PKG_LIBS = -L$(LIBDIR) -larcgisplaces -lws2_32 -ladvapi32 -luserenv -lbcrypt -lntdll -lcrypt32 -lcrypto -lsecur32 -lmingw32 -loleaut32
+```
+
+The recipe derives that list with `RUSTFLAGS=--print=native-static-libs` (the
+LINKING.md technique) and bakes the result into Makevars.
+
+Contrast **`pdfsigner`**, same domain (TLS) but pure-Rust (`rustls` + `ring`, no
+`openssl-sys`): Unix `PKG_LIBS = -lpdfsigner`, Windows only the std baseline
+`-lws2_32 -ladvapi32 -luserenv -lbcrypt -lntdll`. No `-lssl`/`-lcrypto`,
+`crypt32`, or `secur32` anywhere. The pure-Rust route is what most of the corpus
+takes; see [`corpus.md`](corpus.md).
+
 ## For an R package
 
 R links the package, and supplies OpenSSL itself via Rtools `pkg-config`, so

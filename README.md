@@ -10,6 +10,8 @@ build benchmark.
 
 The [`sys-deps/`](sys-deps/) registry records, per system dependency, how
 Rtools and cargo each link it on Windows and where they diverge (CRT,
-provenance, build options). First entry: [`sys-deps/openssl.md`](sys-deps/openssl.md).
+provenance, build options): [`sys-deps/openssl.md`](sys-deps/openssl.md). A
+[corpus survey](sys-deps/corpus.md) of 52 extendr R packages backs it: only 2
+link a real system library at all; the rest are pure-Rust or vendor C/C++.
 
 MIT licensed.
