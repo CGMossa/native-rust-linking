@@ -1,11 +1,16 @@
 name: windows-linking
 
-# Builds the x86_64-pc-windows-gnu target with vendored OpenSSL, prints the
-# linker settings, and commits them to results/ so they are visible in the repo.
+# Captures two views of OpenSSL linking on Windows and commits them to results/
+# for comparison:
 #
-# Vendored OpenSSL for the mingw target must be configured by a perl that emits
-# Unix-style paths, so the build runs inside MSYS2 (which also supplies make +
-# the mingw-w64 gcc). Strawberry Perl (the runner default) cannot configure it.
+#   1. Rtools' pkg-config  -- the toolchain R's *build system* actually uses
+#      (UCRT64, static libs from the .static.posix prefix, USE_PKG_CONFIG=1).
+#   2. cargo --print ...    -- what Rust computes for x86_64-pc-windows-gnu.
+#
+# They should agree on the system libraries OpenSSL pulls in (crypt32, ws2_32,
+# advapi32, user32, gdi32) but differ on CRT/baseline: Rtools45 is UCRT, the
+# Rust gnu target is MSVCRT. Using Rtools (via r-lib/actions/setup-r) is the
+# standard R-on-Windows toolchain, not a hand-rolled MSYS2.
 
 on:
   workflow_dispatch:
@@ -17,46 +22,59 @@ on:
 permissions:
   contents: write
 
-env:
-  TARGET: x86_64-pc-windows-gnu
-  FEATURES: openssl-sys/vendored
-
 jobs:
-  windows-gnu:
+  windows:
     runs-on: windows-latest
     defaults:
       run:
-        shell: msys2 {0}
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
-      - uses: msys2/setup-msys2@v2
+      - uses: r-lib/actions/setup-r@v2
         with:
-          msystem: MINGW64
-          path-type: inherit          # keep rustup's cargo/rustc on PATH
-          install: mingw-w64-x86_64-gcc make perl
+          r-version: release        # R 4.5 -> Rtools45 (UCRT64), put on PATH
 
-      - name: Toolchain
+      - name: Show R build toolchain
         run: |
-          rustup target add "$TARGET"
-          rustc -vV
+          echo "gcc:        $(command -v gcc)"
+          echo "pkg-config: $(command -v pkg-config)"
+          echo "perl:       $(command -v perl)"
+          echo "make:       $(command -v make)"
           gcc --version | head -1
-          perl --version | sed -n 2p
 
-      - name: Print native-static-libs
+      # View 1: how R's build system sees OpenSSL (Rtools pkg-config)
+      - name: Rtools pkg-config view of OpenSSL
         run: |
           mkdir -p results
-          RUSTFLAGS="--print native-static-libs" \
-            cargo build --target "$TARGET" --features "$FEATURES" 2>&1 | tee nsl.log
-          echo "# target: $TARGET (vendored OpenSSL)" > "results/$TARGET-native-static-libs.txt"
-          grep 'native-static-libs:' nsl.log | tail -1 >> "results/$TARGET-native-static-libs.txt"
+          out=results/rtools-pkgconfig-openssl.txt
+          {
+            echo "# Rtools pkg-config (the toolchain R's build system uses)"
+            echo "modversion:     $(pkg-config --modversion openssl 2>&1)"
+            echo "cflags:         $(pkg-config --cflags openssl 2>&1)"
+            echo "libs:           $(pkg-config --libs openssl 2>&1)"
+            echo "libs --static:  $(pkg-config --libs --static openssl 2>&1)"
+          } | tee "$out"
 
-      - name: Print link-args
+      # View 2: what cargo computes for the gnu target (vendored OpenSSL)
+      - name: cargo native-static-libs (x86_64-pc-windows-gnu, vendored)
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          RUSTFLAGS="--print native-static-libs" \
+            cargo build --target x86_64-pc-windows-gnu --features openssl-sys/vendored 2>&1 | tee nsl.log
+          out=results/x86_64-pc-windows-gnu-native-static-libs.txt
+          echo "# cargo --print native-static-libs (x86_64-pc-windows-gnu, vendored OpenSSL)" > "$out"
+          grep 'native-static-libs:' nsl.log | tail -1 >> "$out"
+
+      - name: cargo link-args (x86_64-pc-windows-gnu, vendored)
         run: |
           cargo clean -p linking_to_openssl
-          echo "# target: $TARGET (vendored OpenSSL)" > "results/$TARGET-link-args.txt"
+          out=results/x86_64-pc-windows-gnu-link-args.txt
+          echo "# cargo --print link-args (x86_64-pc-windows-gnu, vendored OpenSSL)" > "$out"
+          # cross-CRT (MSVCRT rust vs UCRT Rtools) may fail the final link; keep going either way
           RUSTFLAGS="--print link-args" \
-            cargo build --target "$TARGET" --features "$FEATURES" >> "results/$TARGET-link-args.txt" 2>&1
+            cargo build --target x86_64-pc-windows-gnu --features openssl-sys/vendored >> "$out" 2>&1 \
+            || echo "(build/link failed -- see output above; native-static-libs still captured)" >> "$out"
 
       - name: Commit results
         shell: pwsh
@@ -66,7 +84,7 @@ jobs:
           git add results
           git diff --staged --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "CI: windows-gnu linking results [skip ci]"
+            git commit -m "CI: windows linking results (cargo + Rtools pkg-config) [skip ci]"
             git push
           } else {
             Write-Host "no changes"
