@@ -13,6 +13,7 @@ dependency on Windows and where they diverge (CRT, provenance, build options),
 indexed both by dependency ([`openssl.md`](sys-deps/openssl.md)) and by crate
 ([`crates.md`](sys-deps/crates.md)). A [corpus survey](sys-deps/corpus.md) of 52
 extendr R packages backs it: only 2 link a real system library at all; the rest
-are pure-Rust or vendor C/C++, and none vendors avoidably.
+are pure-Rust or vendor C/C++. Whether the vendored ones could avoid it (Rtools
+shipping or being asked to add the lib) is an open task with its blockers listed.
 
 MIT licensed.

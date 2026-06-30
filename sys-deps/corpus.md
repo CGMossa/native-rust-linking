@@ -90,17 +90,21 @@ nothing installed. The full crate-by-crate breakdown is in [`crates.md`](crates.
 
 ## Vendoring discipline
 
-Checked every native dependency for whether it vendors C source it did not need
-to (full table in [`crates.md`](crates.md)). The result: no avoidable case.
+What gets vendored today (full table in [`crates.md`](crates.md)):
 
-- Vendored because CRAN's build farm has no alternative: DuckDB, RocksDB,
-  mozjpeg, libdeflate. Bundling is the only option.
-- Not vendored because a Rust-native version exists and is used: zlib
+- Vendored, no Rust-native and no known Rtools alternative: DuckDB, RocksDB,
+  mozjpeg, libdeflate.
+- Not vendored, a Rust-native version exists and is used: zlib
   (`flate2`/`zlib-rs`), bzip2 (`libbz2-rs-sys`), TLS (`rustls`+`ring`). No
   `libz-sys`, `bzip2-sys`, or `openssl-src` anywhere; the one OpenSSL user links
   the system lib.
-- Vendored despite the platform usually having it: only `zstd-sys`, and only
-  transitively (`pmtiles2`/`zip`/`parquet`), with no practical pure-Rust escape.
+- Vendored despite the platform likely having it: `zstd-sys`, pulled
+  transitively (`pmtiles2`/`zip`/`parquet`).
+
+Whether the vendored cases *could* avoid vendoring (Rtools shipping or being
+asked to add the lib, a system dependency, a maturing Rust crate) is not obvious
+and is tracked, with its routes and blockers, as an open task in
+[`crates.md`](crates.md#avoiding-vendoring-open-task).
 
 ## The CRT fault line, in the wild
 

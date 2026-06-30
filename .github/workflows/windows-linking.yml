@@ -43,6 +43,30 @@ jobs:
           echo "make:       $(command -v make)"
           gcc --version | head -1
 
+      # Avoiding-vendoring task: does Rtools already ship libs packages vendor?
+      - name: Probe Rtools for vendorable libraries
+        run: |
+          mkdir -p results
+          out=results/rtools-available-libs.txt
+          prefix=$(pkg-config --variable=prefix openssl 2>/dev/null)
+          {
+            echo "# Does Rtools already ship libs that packages currently vendor?"
+            echo "# PRESENT => a *-sys crate could pkg-config it instead of bundling C."
+            echo "# prefix: $prefix"
+            echo
+            echo "## pkg-config --exists / --modversion"
+            for pc in libzstd zstd libdeflate libjpeg libjpeg-turbo zlib libbrotlienc duckdb rocksdb; do
+              if pkg-config --exists "$pc" 2>/dev/null; then
+                printf 'PRESENT  %-16s %s\n' "$pc" "$(pkg-config --modversion "$pc" 2>/dev/null)"
+              else
+                printf 'absent   %s\n' "$pc"
+              fi
+            done
+            echo
+            echo "## static archives in prefix/lib matching vendored libs"
+            ls "$prefix/lib" 2>/dev/null | grep -iE 'zstd|deflate|jpeg|brotli|^libz\.|duckdb|rocksdb' || echo "(none found / lib dir missing)"
+          } | tee "$out"
+
       # View 1: how R's build system sees OpenSSL (Rtools pkg-config)
       - name: Rtools pkg-config view of OpenSSL
         run: |
