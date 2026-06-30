@@ -2,6 +2,10 @@ name: windows-linking
 
 # Builds the x86_64-pc-windows-gnu target with vendored OpenSSL, prints the
 # linker settings, and commits them to results/ so they are visible in the repo.
+#
+# Vendored OpenSSL for the mingw target must be configured by a perl that emits
+# Unix-style paths, so the build runs inside MSYS2 (which also supplies make +
+# the mingw-w64 gcc). Strawberry Perl (the runner default) cannot configure it.
 
 on:
   workflow_dispatch:
@@ -13,41 +17,46 @@ on:
 permissions:
   contents: write
 
+env:
+  TARGET: x86_64-pc-windows-gnu
+  FEATURES: openssl-sys/vendored
+
 jobs:
   windows-gnu:
     runs-on: windows-latest
-    env:
-      TARGET: x86_64-pc-windows-gnu
-      FEATURES: openssl-sys/vendored
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install gnu toolchain
-        shell: pwsh
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          path-type: inherit          # keep rustup's cargo/rustc on PATH
+          install: mingw-w64-x86_64-gcc make perl
+
+      - name: Toolchain
         run: |
-          rustup toolchain install stable-$env:TARGET --no-self-update
-          rustup default stable-$env:TARGET
+          rustup target add "$TARGET"
           rustc -vV
-          gcc --version
+          gcc --version | head -1
+          perl --version | sed -n 2p
 
       - name: Print native-static-libs
-        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force results | Out-Null
-          $env:RUSTFLAGS = "--print native-static-libs"
-          cargo build --target $env:TARGET --features $env:FEATURES 2>&1 | Tee-Object -FilePath nsl.log
-          $line = (Select-String -Path nsl.log -Pattern 'native-static-libs:' | Select-Object -Last 1).Line
-          "# target: $env:TARGET (vendored OpenSSL)" | Set-Content results/$env:TARGET-native-static-libs.txt
-          $line | Add-Content results/$env:TARGET-native-static-libs.txt
-          Write-Host $line
+          mkdir -p results
+          RUSTFLAGS="--print native-static-libs" \
+            cargo build --target "$TARGET" --features "$FEATURES" 2>&1 | tee nsl.log
+          echo "# target: $TARGET (vendored OpenSSL)" > "results/$TARGET-native-static-libs.txt"
+          grep 'native-static-libs:' nsl.log | tail -1 >> "results/$TARGET-native-static-libs.txt"
 
       - name: Print link-args
-        shell: pwsh
         run: |
           cargo clean -p linking_to_openssl
-          $env:RUSTFLAGS = "--print link-args"
-          "# target: $env:TARGET (vendored OpenSSL)" | Set-Content results/$env:TARGET-link-args.txt
-          cargo build --target $env:TARGET --features $env:FEATURES 2>&1 | Add-Content results/$env:TARGET-link-args.txt
+          echo "# target: $TARGET (vendored OpenSSL)" > "results/$TARGET-link-args.txt"
+          RUSTFLAGS="--print link-args" \
+            cargo build --target "$TARGET" --features "$FEATURES" >> "results/$TARGET-link-args.txt" 2>&1
 
       - name: Commit results
         shell: pwsh
