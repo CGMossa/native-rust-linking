@@ -10,11 +10,12 @@ cargo new --lib linking_to_openssl
 cd linking_to_openssl
 ```
 
+<!-- verified across crate types: bin, rlib, cdylib print no note; only staticlib does -->
 To read the linker settings back out of the build, compile a **`staticlib`**.
-`rustc --print native-static-libs` emits its note for `staticlib` only.
-Verified across crate types (`rustc --print native-static-libs --crate-type
-<T> probe.rs --out-dir .`): `bin`, `rlib`, and `cdylib` produce no note; only
-`staticlib` does. So a plain `--lib` is not enough on its own:
+`rustc --print native-static-libs` emits its note for `staticlib` only
+(`rustc --print native-static-libs --crate-type <T> probe.rs --out-dir .`):
+`bin`, `rlib`, and `cdylib` produce no note; only `staticlib` does. So a plain
+`--lib` is not enough on its own:
 
 ```toml
 # Cargo.toml
